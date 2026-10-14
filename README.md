@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 5628)
-Total output lines: 229
-
 # Shorts Studio 0.2.13
 
 YouTube Shorts/TikTok URL 또는 원본 파일 → 자동 다운로드 → 9:16 H.264 MP4 → 모든 오디오 제거. 최종 실행 대상은 Windows 로컬 설치형 앱입니다.
@@ -110,7 +107,39 @@ git config user.name 'YOUR_NAME'
 git config user.email 'YOUR_GITHUB_NOREPLY_EMAIL'
 git add -A
 git commit -m "Build Shorts Studio MVP"
-git remote ad…628 tokens truncated…본 선택은 `gemini-3.8-flash`이며 현재 모델 선택 항목은 `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`입니다. Key는 Windows Credential Manager에 저장합니다. Google AI Studio에서 API key를 만든 뒤 설정 화면에 입력하세요. 대본 생성과 연결 확인은 Gemini API를 호출하며 사용량/quota가 적용됩니다. 각 설정 탭은 입력값 안내를 제공합니다. 영상 분석 Provider 설정과 대본용 Gemini 설정은 서로 독립적입니다.
+git remote add origin YOUR_REPOSITORY_URL
+git push -u origin main
+```
+
+현재 workspace에는 initial commit과 remote가 없습니다. 저장소 URL을 정한 뒤 위 명령을 최초 한 번 실행하세요. 이후 다른 PC/Codespaces에서는 clone, 작업 전 `git pull --ff-only`, 작업 후 commit/push를 수행합니다. Signed Release 업데이트 설정과 asset 게시 절차는 [docs/UPDATES.md](docs/UPDATES.md)를 참고합니다.
+
+이미 초기 commit이 있으면 commit 명령은 생략합니다. 이미 remote가 있으면 `git remote -v`로 먼저 확인합니다.
+
+## Android / PC에서 개발 이어가기
+
+GitHub 저장소 → Code → Codespaces → Create codespace on main. `.devcontainer`가 Python과 FFmpeg를 준비합니다.
+Android는 Chrome의 데스크톱 사이트 모드가 편리하며, 작은 화면/키보드 제약이 있습니다. 모바일 편집 환경은 직접 검증하지 않았습니다.
+
+```bash
+# Codespaces terminal: 필요할 때만 개발 UI 실행
+python -m streamlit run src/shorts_studio/ui/web.py --server.address 0.0.0.0
+python -m unittest discover -s tests -v
+git add .
+git commit -m "Describe change"
+git push
+```
+
+Ports의 8501에서 Open in Browser를 선택합니다. 포트 공개 범위는 Private로 유지합니다.
+이곳은 개발 환경입니다. 최종 영상 처리/사용자 데이터는 Windows 로컬 앱에서 처리하는 설계를 유지합니다.
+Codespaces 사용량에 따라 비용이 발생할 수 있으므로 작업 후 Stop합니다.
+다른 PC에서는 clone 후 setup, 이후 작업 시작 전 `git pull --ff-only`, 종료 전 commit/push를 수행합니다.
+원본 영상/결과/키/가상환경은 Git에 포함하지 않으며 기기 간 자동으로 이동하지 않습니다.
+GitHub의 Codespaces 안내: https://docs.github.com/en/codespaces/quickstart
+
+## 설정과 자원 관리
+
+`config.example.toml`은 예시이며, Desktop 설정 화면에서 Provider를 등록할 수 있습니다. 현재 영상 변환에는 AI API가 필요하지 않습니다.
+설정 파일에는 Provider/model/base_url/key_name만 보관합니다. Windows Desktop의 AI Provider 설정 화면은 key를 Windows Credential Manager에 저장하며, API key는 환경변수 또는 자격 증명 저장소에서 조회합니다. 영상 분석은 `openai-compatible` Chat Completions endpoint를 사용합니다. 한국어 대본 생성은 별도 **한국어 대본 · Gemini** 설정에서 Gemini API key와 model을 등록하고 연결을 확인합니다. 기본 선택은 `gemini-3.8-flash`이며 현재 모델 선택 항목은 `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`입니다. Key는 Windows Credential Manager에 저장합니다. Google AI Studio에서 API key를 만든 뒤 설정 화면에 입력하세요. 대본 생성과 연결 확인은 Gemini API를 호출하며 사용량/quota가 적용됩니다. 각 설정 탭은 입력값 안내를 제공합니다. 영상 분석 Provider 설정과 대본용 Gemini 설정은 서로 독립적입니다.
 
 ```powershell
 # AI 분석을 명시적으로 실행할 때만 작은 frame sample을 설정한 Provider로 전송합니다.
