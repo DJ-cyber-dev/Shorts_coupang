@@ -1,0 +1,13 @@
+[ai]
+provider = "disabled"
+model = ""
+base_url = ""
+key_name = "SHORTS_AI_KEY"
+
+[tts]
+provider = "disabled"
+model = ""
+base_url = ""
+key_name = "SHORTS_TTS_KEY"
+voice = "alloy"
+speed = 1.0

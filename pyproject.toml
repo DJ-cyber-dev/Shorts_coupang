@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shorts-studio"
+version = "0.2.13"
+description = "Local-first modular shorts creation engine"
+requires-python = ">=3.11"
+dependencies = ["yt-dlp[default]>=2026.3.17,<2027", "cryptography>=44,<51"]
+
+[project.optional-dependencies]
+web = ["streamlit==1.65.0"]
+secrets = ["keyring==25.7.0"]
+text = ["easyocr==1.7.2"]
+upload = [
+  "google-api-python-client>=2.170,<3",
+  "google-auth-oauthlib>=1.2,<2",
+  "google-auth-httplib2>=0.2,<1",
+]
+packaging = ["pyinstaller>=6.13,<7"]
+windows-tts = [
+  "winrt-Windows.Foundation==3.2.1",
+  "winrt-Windows.Foundation.Collections==3.2.1",
+  "winrt-Windows.Media.SpeechSynthesis==3.2.1",
+  "winrt-Windows.Storage.Streams==3.2.1",
+]
+test = ["opencv-python>=4.10,<5", "numpy>=1.24"]
+
+[project.scripts]
+shorts = "shorts_studio.cli:main"
+shorts-desktop = "shorts_studio.ui.desktop:main"
+shorts-web = "shorts_studio.ui.web_app:main"
+shorts-analyze = "shorts_studio.providers.cli:main"
+shorts-script = "shorts_studio.narration.cli:main"
+shorts-render = "shorts_studio.narration.render_cli:main"
+shorts-source-search = "shorts_studio.sourcing.search_cli:main"
+shorts-tiktok-ad-search = "shorts_studio.sourcing.tiktok_search_cli:main"
+shorts-upload = "shorts_studio.upload.cli:main"
+shorts-products = "shorts_studio.products.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

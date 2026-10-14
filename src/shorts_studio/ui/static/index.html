@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Shorts Studio</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Shorts Studio 홈"><span class="brand-mark">S</span><span>Shorts Studio</span></a>
+      <div class="topbar-right">
+        <span id="save-state" class="save-state">로컬 작업 공간</span>
+        <button id="history-button" class="button button-quiet" type="button">작업 기록</button>
+        <button id="settings-button" class="button button-quiet" type="button">설정 상태</button>
+        <button id="close-button" class="button button-quiet" type="button">앱 종료</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="welcome-row">
+        <div><p class="eyebrow">SHORT FORM VIDEO WORKSPACE</p><h1>영상 제작</h1><p class="subheading">소스를 넣고 문자 제거 결과를 확인한 뒤 다음 제작 단계를 이어가세요.</p></div>
+        <button id="new-job" class="button button-secondary" type="button">새 작업</button>
+      </section>
+
+      <nav class="pipeline" aria-label="제작 단계">
+        <button class="pipeline-step active" data-step="source" aria-current="step" type="button"><span class="step-number">01</span><span><b>소스</b><small>URL 또는 파일</small></span></button>
+        <span class="pipeline-arrow">›</span>
+        <button class="pipeline-step" data-step="remove" type="button"><span class="step-number">02</span><span><b>문자 제거</b><small>필수 처리</small></span></button>
+        <span class="pipeline-arrow">›</span>
+        <button class="pipeline-step" data-step="script" type="button"><span class="step-number">03</span><span><b>분석 · 대본</b><small>AI 분석 · 문안</small></span></button>
+        <span class="pipeline-arrow">›</span>
+        <button class="pipeline-step" data-step="voice" type="button"><span class="step-number">04</span><span><b>음성 · 자막</b><small>Heami · SRT</small></span></button>
+        <span class="pipeline-arrow">›</span>
+        <button class="pipeline-step" data-step="export" type="button"><span class="step-number">05</span><span><b>상품 · 내보내기</b><small>Coupang · 게시</small></span></button>
+      </nav>
+
+      <div class="workspace">
+        <section class="editor-column" aria-label="작업 설정">
+          <article class="card source-card">
+            <div class="card-heading"><div><span class="section-kicker">STEP 01</span><h2>영상 소스</h2></div><span id="source-badge" class="badge badge-muted">입력 대기</span></div>
+            <div class="segmented" role="tablist" aria-label="영상 입력 방식">
+              <button id="url-tab" class="segment selected" type="button" role="tab" aria-selected="true">URL 입력</button>
+              <button id="file-tab" class="segment" type="button" role="tab" aria-selected="false">파일 업로드</button>
+            </div>
+            <div id="url-panel" class="input-panel">
+              <label for="source-url">YouTube Shorts 또는 TikTok URL</label>
+              <div class="input-with-icon"><span class="input-icon">↗</span><input id="source-url" type="url" placeholder="https://www.youtube.com/shorts/..." autocomplete="url"></div>
+              <p class="field-help">공개 영상 URL을 입력하면 제작 시작 시 원본을 다운로드합니다.</p>
+            </div>
+            <div id="file-panel" class="input-panel hidden">
+              <label class="dropzone" id="dropzone" for="source-file"><span class="upload-symbol">↑</span><b id="file-label">영상 파일을 선택하거나 여기에 놓으세요</b><small>MP4, MOV, MKV, AVI, WEBM · 최대 2 GB</small><input id="source-file" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm"></label>
+              <div id="upload-progress-wrap" class="upload-progress-wrap hidden"><div class="progress-track"><span id="upload-progress"></span></div><small id="upload-label">업로드 준비 중</small></div>
+            </div>
+            <div class="divider"></div>
+            <div class="settings-grid">
+              <div class="field"><label for="frame-mode">9:16 화면 배치</label><select id="frame-mode"><option value="pad">여백 추가 · 원본 보존</option><option value="crop">중앙 Crop · 화면 채우기</option></select></div>
+              <div class="field"><label for="output-path">결과 MP4 전체 경로 (선택)</label><input id="output-path" type="text" placeholder="예: C:\Videos\shorts.mp4"><small>비워두면 Videos\ShortsStudio에 자동 파일명으로 저장합니다.</small></div>
+            </div>
+            <div class="required-row"><span class="required-icon">✓</span><div><b>전체 화면 문자 제거</b><small>한글·영문·중국어 등 언어를 구분하지 않고 처리합니다.</small></div><span class="required-pill">필수</span></div>
+            <div id="readiness-warning" class="inline-warning hidden"></div>
+          </article>
+
+          <article class="card stage-card" id="remove-card">
+            <div class="card-heading"><div><span class="section-kicker">STEP 02</span><h2>문자 제거 결과</h2></div><span id="remove-badge" class="badge badge-muted">대기 중</span></div>
+            <p id="remove-summary" class="stage-summary">원본 영상을 등록하고 제작을 시작하면 문자 영역을 복원합니다.</p>
+            <div id="report-stats" class="report-stats hidden"></div>
+            <button id="compare-button" class="button button-secondary hidden" type="button">원본 / 제거 결과 비교</button>
+          </article>
+
+          <article class="card stage-card" id="analysis-card">
+            <div class="card-heading"><div><span class="section-kicker">STEP 03</span><h2>AI 영상 분석</h2></div><span id="analysis-badge" class="badge badge-muted">대기 중</span></div>
+            <p class="stage-summary">문자 제거된 영상을 Provider에 전송해 장면, 행동, 노출 문자를 요약합니다.</p>
+            <button id="analyze-button" class="button button-secondary" type="button" disabled>AI 분석 실행</button>
+            <label class="editor-label" for="analysis-editor">분석 JSON · 필요하면 편집할 수 있습니다</label>
+            <textarea id="analysis-editor" class="json-editor" spellcheck="false" placeholder="분석 결과가 여기에 표시됩니다." disabled></textarea>
+          </article>
+
+          <article class="card stage-card" id="script-card">
+            <div class="card-heading"><div><span class="section-kicker">STEP 03</span><h2>한국어 대본</h2></div><span id="script-badge" class="badge badge-muted">대기 중</span></div>
+            <div class="settings-grid script-options">
+              <div class="field"><label for="script-duration">목표 길이</label><select id="script-duration"><option value="15">15초</option><option value="30" selected>30초</option><option value="45">45초</option><option value="60">60초</option></select></div>
+              <div class="field"><label for="script-tone">말투</label><select id="script-tone"><option value="friendly">친근한 말투</option><option value="review">리뷰 말투</option><option value="informative">정보 전달</option><option value="hook">초반 후킹 강조</option></select></div>
+            </div>
+            <div class="field"><label for="script-cta">마무리 문구 (선택)</label><input id="script-cta" type="text" maxlength="200" placeholder="예: 자세한 내용은 아래 링크에서 확인하세요"></div>
+            <button id="script-button" class="button button-secondary" type="button" disabled>대본 생성</button>
+            <label class="editor-label" for="script-editor">대본 JSON · 문장을 편집한 뒤 음성을 합성하세요</label>
+            <textarea id="script-editor" class="json-editor" spellcheck="false" placeholder="분석 결과를 확인한 뒤 대본을 생성하세요." disabled></textarea>
+            <button id="render-button" class="button button-primary" type="button" disabled>한국어 음성 · 자막 합성</button>
+          </article>
+
+          <article class="card stage-card" id="product-card">
+            <div class="card-heading"><div><span class="section-kicker">STEP 05</span><h2>Coupang 상품 매칭</h2></div><span id="product-badge" class="badge badge-muted">대본 생성 후 검색</span></div>
+            <p class="stage-summary">대본 생성 후 키워드로 최대 10개 후보를 자동 검색합니다. 영상과 동일한 상품을 고르면 게시 제목·설명·태그에 링크와 제휴 고지를 자동 입력합니다.</p>
+            <div class="product-search-row"><input id="product-keyword" type="search" placeholder="상품 검색어"><button id="product-search-button" class="button button-secondary" type="button" disabled>후보 검색</button></div>
+            <div id="product-results" class="product-results"></div>
+            <div class="divider"></div>
+            <div class="card-heading"><div><span class="section-kicker">YOUTUBE</span><h2>최종 게시 설정</h2></div><span id="upload-badge" class="badge badge-muted">최종 영상 후 활성화</span></div>
+            <div class="oauth-row"><label for="youtube-oauth-file">Google OAuth client JSON</label><input id="youtube-oauth-file" type="file" accept="application/json,.json"><button id="oauth-upload-button" class="button button-secondary" type="button">OAuth 설정 저장</button><small id="oauth-status">OAuth 설정 필요</small></div>
+            <p id="upload-draft-status" class="upload-draft-status">대본 생성 후 제목·설명·태그를 자동 작성합니다. 상품 선택 시 링크와 제휴 고지가 추가됩니다.</p>
+            <div class="field"><label for="upload-title">제목</label><input id="upload-title" type="text" maxlength="100" placeholder="최종 영상 제목"></div>
+            <div class="field upload-fields"><label for="upload-description">설명</label><textarea id="upload-description" class="json-editor upload-description" maxlength="5000" placeholder="영상 설명과 상품 링크"></textarea></div>
+            <div class="settings-grid"><div class="field"><label for="upload-tags">Tags · 쉼표 구분</label><input id="upload-tags" type="text" placeholder="shorts, 상품 리뷰"></div><div class="field"><label for="upload-privacy">공개 범위</label><select id="upload-privacy"><option value="private">비공개 · 기본값</option><option value="unlisted">일부 공개</option><option value="public">공개</option></select></div></div>
+            <button id="upload-button" class="button button-primary" type="button" disabled>YouTube 업로드</button>
+            <p id="upload-receipt" class="stage-summary hidden"></p>
+          </article>
+        </section>
+
+        <aside class="result-column" aria-label="결과 미리보기">
+          <article class="card preview-card">
+            <div class="card-heading"><div><span class="section-kicker">LIVE PREVIEW</span><h2>결과 미리보기</h2></div><span id="preview-badge" class="badge badge-muted">결과 대기</span></div>
+            <div id="empty-preview" class="empty-preview"><div class="preview-frame"><span>9:16</span><div class="play-icon">▶</div></div><p>작업을 시작하면 처리된 영상이 여기에 표시됩니다.</p></div>
+            <video id="result-video" class="result-video hidden" controls playsinline preload="metadata"></video>
+            <video id="final-video" class="result-video hidden" controls playsinline preload="metadata"></video>
+            <p id="final-video-label" class="stage-summary hidden">한국어 음성·자막 최종 영상</p>
+            <div id="video-details" class="video-details hidden"></div>
+            <div id="preview-image-wrap" class="preview-image-wrap hidden"><img id="preview-image" alt="문자 제거 처리 비교 미리보기"></div>
+            <a id="download-link" class="button button-primary download-link hidden" download>MP4 다운로드</a>
+            <div class="final-downloads hidden" id="final-downloads"><a id="final-download-link" class="button button-secondary" download>최종 MP4</a><a id="srt-download-link" class="button button-secondary" download>자막 SRT</a><a id="voice-download-link" class="button button-secondary" download>음성 WAV</a><a id="report-download-link" class="button button-secondary" download>합성 리포트</a></div>
+          </article>
+
+          <article class="card artifacts-card">
+            <div class="card-heading"><div><span class="section-kicker">OUTPUTS</span><h2>단계별 산출물</h2></div></div>
+            <div class="artifact-row"><span class="artifact-icon">▣</span><span><b>원본 영상</b><small id="artifact-source">소스 입력 후 표시</small></span><span class="artifact-state" id="artifact-source-state">—</span></div>
+            <div class="artifact-row"><span class="artifact-icon">◉</span><span><b>문자 제거 영상</b><small id="artifact-clean">필수 단계 완료 후 생성</small></span><span class="artifact-state" id="artifact-clean-state">대기</span></div>
+            <div class="artifact-row"><span class="artifact-icon">▤</span><span><b>검토 리포트</b><small>탐지 프레임 · 처리 방식</small></span><span class="artifact-state" id="artifact-report-state">대기</span></div>
+            <div class="artifact-row"><span class="artifact-icon">♫</span><span><b>최종 음성·자막 영상</b><small id="artifact-final">대본·TTS 단계 완료 후 생성</small></span><span class="artifact-state" id="artifact-final-state">대기</span></div>
+            <div class="artifact-row"><span class="artifact-icon">≋</span><span><b>자막 · 음성 산출물</b><small>SRT · WAV · 합성 리포트</small></span><span class="artifact-state" id="artifact-sidecars-state">대기</span></div>
+          </article>
+        </aside>
+      </div>
+    </main>
+
+    <footer id="taskbar" class="taskbar">
+      <div class="task-status"><span id="status-dot" class="status-dot"></span><div><b id="task-status-title">준비됨</b><small id="task-status-detail">URL을 입력하거나 영상 파일을 선택하세요.</small></div></div>
+      <div class="task-progress hidden" id="task-progress-wrap"><div class="progress-track"><span id="task-progress"></span></div><small id="task-progress-label">처리 중…</small></div>
+      <div class="task-actions"><button id="cancel-button" class="button button-danger hidden" type="button">작업 취소</button><button id="start-button" class="button button-primary" type="button" disabled>문자 제거 시작</button></div>
+    </footer>
+  </div>
+
+  <dialog id="settings-dialog" class="modal"><form method="dialog"><div class="modal-heading"><div><span class="section-kicker">LOCAL CONFIGURATION</span><h2>전체 설정</h2></div><button class="icon-button" aria-label="닫기">×</button></div><p class="modal-copy">API key는 저장 시 Windows Credential Manager에 보관하며, 브라우저에는 다시 표시하지 않습니다.</p><div id="settings-tabs" class="settings-tabs"></div><div id="settings-content" class="settings-content"></div><div id="settings-message" class="inline-warning hidden"></div><div class="modal-footer"><button class="button button-secondary">닫기</button></div></form></dialog>
+  <dialog id="history-dialog" class="modal"><form method="dialog"><div class="modal-heading"><div><span class="section-kicker">RECENT JOBS</span><h2>작업 기록</h2></div><button class="icon-button" aria-label="닫기">×</button></div><div id="history-list" class="history-list"></div><div class="modal-footer"><button class="button button-secondary">닫기</button></div></form></dialog>
+  <dialog id="compare-dialog" class="modal compare-modal"><form method="dialog"><div class="modal-heading"><div><span class="section-kicker">QUALITY REVIEW</span><h2>문자 제거 미리보기</h2></div><button class="icon-button" aria-label="닫기">×</button></div><img id="compare-image" alt="원본, 탐지 영역, 복원 결과 비교"><p class="modal-copy">대표 프레임 비교입니다. 전체 영상의 잔존 문자와 프레임 간 흔들림도 MP4에서 확인하세요.</p><div class="modal-footer"><button class="button button-secondary">닫기</button></div></form></dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>
