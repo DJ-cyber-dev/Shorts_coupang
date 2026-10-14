@@ -30,6 +30,11 @@ MANIFEST_DOMAIN = b"shorts-studio-update-v1\n"
 VERSION_RE = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
+def _is_windows() -> bool:
+    """Keep platform gating small and easy to exercise in cross-platform tests."""
+    return os.name == "nt"
+
+
 @dataclass(frozen=True)
 class UpdateRelease:
     version: str
@@ -141,7 +146,7 @@ class GitHubReleaseUpdater:
 
     def download_and_launch(self, release: UpdateRelease, *, install_dir: Path | None = None,
                             data_dir: Path | None = None, process_id: int | None = None) -> Path:
-        if os.name != "nt":
+        if not _is_windows():
             raise MediaError("서명 업데이트 적용은 Windows 설치본에서만 지원합니다.")
         _version_key(release.version)
         if (not release.asset_url.startswith(f"https://github.com/{self.repository}/releases/download/")

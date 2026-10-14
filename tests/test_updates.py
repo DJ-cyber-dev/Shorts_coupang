@@ -118,7 +118,8 @@ class GitHubUpdateTests(unittest.TestCase):
                 "0" * 64,
             )
             from unittest.mock import patch
-            with patch("shorts_studio.updates.github_release.subprocess.Popen") as launch:
+            with patch("shorts_studio.updates.github_release._is_windows", return_value=True), \
+                 patch("shorts_studio.updates.github_release.subprocess.Popen") as launch:
                 with self.assertRaisesRegex(MediaError, "SHA-256"):
                     client.download_and_launch(release, install_dir=install, data_dir=data)
             launch.assert_not_called()
@@ -145,7 +146,13 @@ class GitHubUpdateTests(unittest.TestCase):
                 hashlib.sha256(content).hexdigest(),
             )
             from unittest.mock import patch
-            with patch("shorts_studio.updates.github_release.subprocess.Popen") as launch:
+            from types import SimpleNamespace
+            with patch("shorts_studio.updates.github_release._is_windows", return_value=True), \
+                 patch("shorts_studio.updates.github_release.subprocess.STARTUPINFO",
+                       return_value=SimpleNamespace(dwFlags=0), create=True), \
+                 patch("shorts_studio.updates.github_release.subprocess.STARTF_USESHOWWINDOW", 1, create=True), \
+                 patch("shorts_studio.updates.github_release.subprocess.CREATE_NO_WINDOW", 2, create=True), \
+                 patch("shorts_studio.updates.github_release.subprocess.Popen") as launch:
                 archive = client.download_and_launch(release, install_dir=install, data_dir=root / "ShortsStudio", process_id=123)
             launch.assert_called_once()
             helper = root / "ShortsStudio" / "updates" / HELPER_NAME

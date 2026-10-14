@@ -1,6 +1,6 @@
 import importlib.util
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import unittest
 from unittest.mock import patch
 
@@ -16,8 +16,8 @@ class ReadinessTests(unittest.TestCase):
                                      "SHORTS_USER_NETWORK_DIR": ""}), \
              patch("shorts_studio.text_removal.model._has_package_identity", return_value=True):
             self.assertEqual(
-                user_network_dir(),
-                Path(r"C:\Users\Test\AppData\Local\ShortsStudio\models\user_network"),
+                PureWindowsPath(str(user_network_dir())),
+                PureWindowsPath(r"C:\Users\Test\AppData\Local\ShortsStudio\models\user_network"),
             )
 
     def test_lama_pinned_model_digest(self):
@@ -229,6 +229,8 @@ class MaskTests(unittest.TestCase):
         self.assertTrue(np.all(result[50, 90] == 180))
 
     def test_craft_confidence_map_masks_glyph_pixels_not_full_line(self):
+        if importlib.util.find_spec("torch") is None:
+            self.skipTest("Optional PyTorch dependency absent")
         import numpy as np
         import torch
         from shorts_studio.text_removal.worker import make_text_mask
@@ -255,6 +257,8 @@ class MaskTests(unittest.TestCase):
         self.assertLess(mask.sum(), 255 * 200)
 
     def test_craft_default_padding_stays_tight_around_glyphs(self):
+        if importlib.util.find_spec("torch") is None:
+            self.skipTest("Optional PyTorch dependency absent")
         import numpy as np
         import torch
         from shorts_studio.text_removal.worker import make_text_mask
