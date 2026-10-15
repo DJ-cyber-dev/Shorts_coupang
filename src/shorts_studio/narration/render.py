@@ -8,6 +8,7 @@ import wave
 
 from shorts_studio.core import Engine, MediaError
 from shorts_studio.core.engine import publish_no_replace
+from .script import PRODUCT_DESCRIPTION_CTA
 from .provider import WindowsLocalTTS
 from .settings import TTSSettings
 
@@ -100,25 +101,47 @@ def _join_wav_segments(paths, output: Path):
     return captions, cursor_frames / params.framerate
 
 
+def _narration_rows(script: dict) -> list[str]:
+    segments = script.get("segments") if isinstance(script, dict) else None
+    if not isinstance(segments, list) or not 1 <= len(segments) <= 12:
+        raise ValueError("대본에는 1~12개 narration segment가 필요합니다.")
+    rows = []
+    for segment in segments:
+        if not isinstance(segment, dict) or not isinstance(segment.get("narration"), str) or not segment["narration"].strip():
+            raise ValueError("각 대본 segment에 narration 문장이 필요합니다.")
+        rows.append(segment["narration"].strip())
+    # The CTA is spoken and burned in as a caption, so it appears in the actual video.
+    if PRODUCT_DESCRIPTION_CTA not in " ".join(rows):
+        rows.append(PRODUCT_DESCRIPTION_CTA)
+    return rows
+
+
 class NarrationRenderer:
     def __init__(self, settings: TTSSettings | None = None, *, engine: Engine | None = None, provider=None):
         self.settings = settings or TTSSettings.load()
         self.engine = engine or Engine()
         self.provider = provider or WindowsLocalTTS(self.settings)
 
+    def preview(self, script: dict) -> bytes:
+        """Synthesize the complete reviewed script for in-browser voice confirmation."""
+        rows = _narration_rows(script)
+        with tempfile.TemporaryDirectory(prefix="shorts-voice-preview-") as temporary:
+            work = Path(temporary)
+            segments = []
+            for index, text in enumerate(rows, start=1):
+                audio_path = work / f"segment-{index:02d}.wav"
+                self.provider.synthesize(text, audio_path)
+                segments.append((audio_path, text))
+            voice = work / "voice.wav"
+            _join_wav_segments(segments, voice)
+            return voice.read_bytes()
+
     def render(self, cleaned_video: Path, script: dict, output: Path) -> Path:
         cleaned_video, output = Path(cleaned_video), Path(output)
         _clean_source(cleaned_video)
         if output.suffix.lower() != ".mp4" or output.exists():
             raise MediaError("새 .mp4 출력 경로를 지정하세요. 기존 파일은 덮어쓰지 않습니다.")
-        segments = script.get("segments") if isinstance(script, dict) else None
-        if not isinstance(segments, list) or not 1 <= len(segments) <= 12:
-            raise ValueError("대본에는 1~12개 narration segment가 필요합니다.")
-        rows = []
-        for segment in segments:
-            if not isinstance(segment, dict) or not isinstance(segment.get("narration"), str) or not segment["narration"].strip():
-                raise ValueError("각 대본 segment에 narration 문장이 필요합니다.")
-            rows.append(segment["narration"].strip())
+        rows = _narration_rows(script)
         output.parent.mkdir(parents=True, exist_ok=True)
         srt_output = output.with_suffix(".srt")
         voice_output = output.with_suffix(".voice.wav")

@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { inputMode: "url", uploadToken: "", jobId: "", pollTimer: 0, busy: false, aiReady: false, scriptAIReady: false, ttsReady: false, oauthReady: false, coupangReady: false, finalReady: false, productId: "", uploadEdited: { title: false, description: false, tags: false } };
+  const state = { inputMode: "url", uploadToken: "", jobId: "", pollTimer: 0, busy: false, aiReady: false, scriptAIReady: false, ttsReady: false, oauthReady: false, coupangReady: false, finalReady: false, productId: "", productCandidates: [], uploadEdited: { title: false, description: false, tags: false } };
   const el = {
     url: $("source-url"), file: $("source-file"), output: $("output-path"), mode: $("frame-mode"),
     start: $("start-button"), cancel: $("cancel-button"), taskTitle: $("task-status-title"),
@@ -103,10 +103,11 @@
     $("analyze-button").disabled = state.busy || !hasCleanVideo || !state.aiReady;
     $("script-button").disabled = state.busy || !$("analysis-editor").value.trim() || !state.scriptAIReady;
     $("render-button").disabled = state.busy || !$("script-editor").value.trim() || !state.ttsReady;
+    $("voice-preview-button").disabled = state.busy || !$("script-editor").value.trim() || !state.ttsReady;
     $("product-search-button").disabled = state.busy || !$("script-editor").value.trim() || !state.coupangReady;
     $("product-search-button").title = state.coupangReady ? "대본 키워드로 Coupang 후보를 최대 10개 검색합니다." : "설정에서 승인된 Coupang Partners Access/Secret Key를 등록하세요.";
     $("upload-button").disabled = state.busy || !state.finalReady || !state.oauthReady || !$("upload-title").value.trim();
-    $("analyze-button").title = state.aiReady ? "선택한 AI Provider로 분석합니다." : "설정 상태에서 AI Provider와 API key를 등록하세요.";
+    $("analyze-button").title = state.aiReady ? "선택한 Gemini 모델로 분석합니다." : "설정에서 Gemini API Key를 등록하세요.";
     $("script-button").title = state.scriptAIReady ? "Gemini API로 한국어 대본을 생성합니다." : "설정에서 Gemini API Key를 등록하고 연결을 확인하세요.";
     $("render-button").title = state.ttsReady ? "Windows Heami 로컬 음성과 자막을 합성합니다." : "MSIX 설치와 Windows 한국어 Heami 음성 설치를 확인하세요.";
   }
@@ -201,8 +202,11 @@
       if (!job || job.id !== state.jobId) return;
       setText(el.taskTitle, job.status === "completed" ? "문자 제거 완료" : job.status_text || "처리 중");
       setText(el.taskDetail, job.stage === "text_removal" ? "전체 화면에서 문자를 탐지하고 복원하고 있습니다." : job.source_name || "");
-      el.progress.style.width = `${Math.round((job.progress || 0) * 100)}%`;
-      setText(el.progressLabel, job.stage === "text_removal" ? "문자 탐지 및 영상 복원 중 · 프레임별 진행률은 제공되지 않습니다." : `${Math.round((job.progress || 0) * 100)}% · ${job.status_text || "처리 중"}`);
+      const percent = Math.round(Math.max(0, Math.min(1, Number(job.progress) || 0)) * 100);
+      el.progress.style.width = `${percent}%`;
+      setText(el.progressLabel, job.stage === "text_removal"
+        ? `전체 진행률 ${percent}% · 문자 탐지 및 영상 복원 중`
+        : `${percent}% · ${job.status_text || "처리 중"}`);
       if (job.stage === "text_removal") badge(el.removeBadge, "문자 제거 중", "warning");
       if (job.stage === "analyze") badge($("analysis-badge"), "분석 중", "warning");
       if (job.stage === "script") badge($("script-badge"), "대본 생성 중", "warning");
@@ -338,6 +342,7 @@
     const button = $("product-search-button"); button.disabled = true; button.textContent = "검색 중…";
     try {
       const { products } = await api("/api/products/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword }) });
+      state.productCandidates = products;
       const list = $("product-results"); list.replaceChildren();
       if (products.length) {
         const note = document.createElement("p"); note.className = "product-data-note";
@@ -370,7 +375,11 @@
         card.append(info, select); list.append(card);
       }
       badge($("product-badge"), `${products.length}개 후보`, products.length ? "success" : "muted");
-      setTask("상품 검색 완료", "상품명·옵션을 확인해 영상과 동일한 상품을 선택하세요.");
+      try {
+        const script = parseEditor("script-editor", "대본");
+        fillUploadDraft(script, script.product || null);
+      } catch (_) { /* Keep search results visible even if the draft is being edited. */ }
+      setTask("상품 검색 완료", "상위 후보 링크를 설명란에 넣었습니다. 영상과 같은 상품을 선택해 주세요.");
     } catch (error) { setTask("상품 검색 실패", error.message, "error"); }
     finally { button.textContent = "후보 검색"; updateStageButtons(); }
   }
@@ -397,9 +406,16 @@
     if (!script || typeof script !== "object") return;
     const narration = (script.segments || []).map((segment) => segment.narration || "").filter(Boolean).join("\n");
     const parts = [script.hook || "", narration, script.cta || ""].filter(Boolean);
-    if (product && (product.affiliate_url || product.url)) {
-      parts.push(`상품 정보: ${product.affiliate_url || product.url}`);
-      parts.push("쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.");
+    const candidates = [...state.productCandidates];
+    if (product && !candidates.some((item) => item.id === product.id)) candidates.unshift(product);
+    const links = candidates.slice(0, 10).map((item, index) => {
+      const url = item.affiliate_url || item.url;
+      return /^https:\/\//i.test(url || "") ? `${index + 1}. ${item.title}\n${url}` : "";
+    }).filter(Boolean);
+    if (links.length) {
+      parts.push("상품 정보 및 링크 (관련도순)");
+      parts.push(links.join("\n\n"));
+      parts.push("쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받을 수 있습니다.");
     }
     const description = parts.join("\n\n").slice(0, 5000);
     const rawTags = [...(script.product_keywords || []), product && product.title, "쇼츠", "shorts", ...(product ? ["쿠팡파트너스"] : [])];
@@ -407,7 +423,7 @@
     if (!state.uploadEdited.title) $("upload-title").value = String(script.title || "").trim().slice(0, 100);
     if (!state.uploadEdited.description) $("upload-description").value = description;
     if (!state.uploadEdited.tags) $("upload-tags").value = tags;
-    setText($("upload-draft-status"), product ? "자동 작성 완료 · 상품 링크와 제휴 고지를 포함했습니다. 제목·설명·태그를 확인한 뒤 업로드하세요." : "자동 작성 완료 · 상품을 선택하면 설명에 상품 링크와 제휴 고지를 추가합니다. 업로드 전 내용을 확인하세요.");
+    setText($("upload-draft-status"), links.length ? `자동 작성 완료 · 상품 후보 ${links.length}개 링크와 제휴 고지를 설명란에 넣었습니다. 영상의 마지막 음성과 자막에도 설명란 안내가 포함됩니다.` : "자동 작성 완료 · 상품 검색 후 최대 10개 링크와 제휴 고지를 설명란에 추가합니다. 영상 마지막에는 상품 정보를 설명란에서 확인하도록 안내합니다.");
     updateStageButtons();
   }
 
@@ -467,7 +483,7 @@
     badge(el.sourceBadge, state.inputMode === "file" && state.uploadToken ? "파일 준비됨" : "입력 대기", state.uploadToken ? "success" : "muted");
     setTask("준비됨", "URL을 입력하거나 영상 파일을 선택하세요.");
     $("analysis-editor").value = ""; $("script-editor").value = ""; hide($("final-video")); hide($("final-video-label")); hide($("upload-receipt")); state.finalReady = false;
-    state.productId = ""; state.uploadEdited = { title: false, description: false, tags: false };
+    state.productId = ""; state.productCandidates = []; state.uploadEdited = { title: false, description: false, tags: false };
     $("product-keyword").value = ""; $("product-results").replaceChildren();
     $("upload-title").value = ""; $("upload-description").value = ""; $("upload-tags").value = ""; $("upload-privacy").value = "private";
     setText($("upload-draft-status"), "대본 생성 후 제목·설명·태그를 자동 작성합니다. 상품 선택 시 링크와 제휴 고지가 추가됩니다.");
@@ -480,24 +496,26 @@
   const GEMINI_MODEL_FALLBACK = [
     { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash · 권장" },
     { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
-    { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite · 빠른 처리" },
+    { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite · 무료·경량" },
     { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite · 경량 처리" },
   ];
   const settingForms = {
-    script_ai: { title: "한국어 대본 · Gemini", fields: [["model", "사용할 Gemini 모델", "model"], ["secret", "Gemini API Key", "password"]] },
-    ai: { title: "AI Provider", fields: [["provider", "Provider", "select", ["disabled", "openai-compatible"]], ["model", "Model"], ["base_url", "Base URL"], ["key_name", "API key 환경 변수 이름"], ["secret", "API key · 비워두면 기존 키 유지", "password"]] },
+    script_ai: { title: "Gemini AI 분석 · 한국어 대본", fields: [["model", "사용할 Gemini 모델", "model"], ["secret", "Gemini API Key", "password"]] },
     tts: { title: "한국어 TTS · 무료 로컬", fields: [["provider", "TTS 방식", "select", ["windows-local", "disabled"]], ["voice", "Windows 음성", "voice"]] },
     youtube: { title: "YouTube 검색", fields: [["key_name", "API key 환경 변수 이름"], ["secret", "YouTube API key · 비워두면 기존 키 유지", "password"]] },
     tiktok: { title: "TikTok Commercial API", fields: [["client_key_name", "Client key 환경 변수 이름"], ["client_secret_name", "Client secret 환경 변수 이름"], ["client_key", "Client key · 기존 값 유지 시 비움", "password"], ["client_secret", "Client secret · 기존 값 유지 시 비움", "password"]] },
     coupang: { title: "Coupang Partners", fields: [["access_key", "Access Key", "password"], ["secret_key", "Secret Key", "password"]] },
     updates: { title: "업데이트", fields: [["repository", "GitHub 저장소 (owner/repo)"], ["public_key", "Ed25519 공개키 (base64)"]] },
+    resources: { title: "성능·자원 사용", fields: [["cpu_threads", "문자 제거 최대 CPU thread", "select"], ["background_priority", "다른 앱 우선 (낮은 프로세스 우선순위)", "select", [
+      { value: true, label: "사용 · PC 반응성 우선" }, { value: false, label: "사용 안 함 · 기본 우선순위" },
+    ]]] },
   };
   const settingDefaults = {
     script_ai: { model: "gemini-3.8-flash" },
-    ai: { provider: "disabled", model: "", base_url: "", key_name: "SHORTS_AI_KEY" },
     tts: { provider: "windows-local", voice: "Microsoft Heami Desktop - Korean" },
     youtube: { key_name: "SHORTS_YOUTUBE_API_KEY" },
     tiktok: { client_key_name: "SHORTS_TIKTOK_CLIENT_KEY", client_secret_name: "SHORTS_TIKTOK_CLIENT_SECRET" },
+    resources: { cpu_threads: 2, background_priority: true },
   };
   const settingGuides = {
     tts: [
@@ -506,14 +524,10 @@
       "음성이 준비되지 않으면 상태를 새로고침한 뒤 다시 확인하세요. Windows 설정 > 시간 및 언어 > 음성에서 음성을 추가할 수 있습니다.",
     ],
     script_ai: [
-      "모델: 기본 권장값은 Gemini 3.8 Flash입니다. 간단한 대본을 빠르게 만들 때는 Flash-Lite를 선택하세요.",
-      "필수 입력: Google AI Studio에서 발급한 Gemini API Key만 입력하면 됩니다. 모델과 저장용 Key 이름은 기본 설정되어 있습니다.",
-      "연결 확인은 짧은 테스트 요청 1회를 보냅니다. 실제 대본 생성에는 영상 분석 JSON이 필요하며 API 사용량/quota가 적용됩니다.",
-    ],
-    ai: [
-      "용도: STEP 03의 영상 장면 분석 전용입니다. Gemini 대본 설정과 별도로 동작합니다.",
-      "Provider를 활성화한 뒤 사용 중인 OpenAI-compatible API의 model ID, Base URL(보통 /v1까지), API Key를 입력하세요.",
-      "모르는 항목은 해당 AI 서비스의 API 문서 값을 사용하세요. 기본값 disabled 상태에서는 API를 호출하지 않습니다.",
+      "이 Gemini 모델 하나를 STEP 03 영상 분석과 한국어 대본 생성에 함께 사용합니다.",
+      "Google AI Studio에서 발급한 Gemini API Key를 입력하세요. 같은 Key는 두 기능이 공유하며 Windows Credential Manager에 보관됩니다.",
+      "무료 사용은 모델별 quota와 요청 제한이 적용됩니다. 무료 tier에서는 전송한 내용이 Google 제품 개선에 사용될 수 있습니다. 무료 한도·데이터 정책을 확인해 주세요.",
+      "연결 확인은 Gemini API 테스트 요청을 1회 보냅니다. 영상 장면 분석은 영상에서 추출한 frame 이미지를 Gemini로 전송합니다.",
     ],
     youtube: [
       "용도: YouTube 영상 후보 검색용 Data API Key입니다. YouTube 업로드 OAuth 설정과는 다른 인증입니다.",
@@ -534,6 +548,11 @@
       "GitHub 저장소는 owner/repo 형식으로 입력하세요.",
       "공개키는 Release manifest 검증에 사용합니다. 설치 배포용 signing key와 한 쌍인 Base64 Ed25519 public key를 입력하세요.",
       "업데이트 기능을 구성하지 않으면 비워둘 수 있습니다.",
+    ],
+    resources: [
+      "CPU thread 상한은 문자 탐지·복원과 영상 변환·인코딩에 사용할 수 있는 최대 논리 CPU 수입니다. 장치에서 사용 가능한 수만큼 선택할 수 있습니다.",
+      "thread를 줄이면 처리 시간이 길어집니다. 다른 앱 반응성을 우선하려면 1~2개 또는 사용 가능 수의 절반 이하로 시작하세요.",
+      "‘다른 앱 우선’을 켜면 Windows에서 처리 프로세스 우선순위를 낮춰 작업 중 PC 반응성을 높입니다.",
     ],
   };
   let settingsSnapshot = {};
@@ -581,7 +600,9 @@
         wrap.append(fieldLabel, picker, hint, input); form.append(wrap); continue;
       } else if (type === "select" || type === "voice") {
         input = document.createElement("select");
-        const choices = options || (name === "script_ai" ? (values.models || []).map((item) => ({ value: item.id, label: item.label })) :
+        const choices = (name === "resources" && key === "cpu_threads"
+          ? Array.from({ length: Number(values.available_threads) || 1 }, (_, index) => ({ value: index + 1, label: `${index + 1} thread${index ? "s" : ""}` }))
+          : options) || (name === "script_ai" ? (values.models || []).map((item) => ({ value: item.id, label: item.label })) :
           name === "tts" ? (values.voice_options?.length ? values.voice_options : [settingDefaults.tts.voice]).map((item) => ({ value: item, label: item })) : []);
         for (const choice of choices) {
           const option = document.createElement("option");
@@ -601,11 +622,17 @@
     note.textContent = name === "script_ai" ? `Gemini 전용 설정 · ${values.key_saved ? "API Key 저장됨" : "API Key 미설정"} · Key는 Windows Credential Manager에 저장됩니다.` :
       name === "coupang" ? "파트너스 API credentials는 Windows Credential Manager에 저장됩니다." :
       name === "youtube" ? "API Key는 Windows Credential Manager에 저장됩니다." :
-      name === "ai" ? "비밀 값은 설정 파일에 저장하지 않고 Windows Credential Manager에서 불러옵니다." :
       name === "tts" ? (values.ready ? `무료 로컬 TTS 사용 가능 · ${values.voice}` : `TTS 준비 필요 · ${values.detail || "MSIX 및 Heami 음성 상태를 확인하세요."}`) :
       name === "tiktok" ? "비밀 값은 설정 파일에 저장하지 않고 Windows Credential Manager에서 불러옵니다." :
+      name === "resources" ? `현재 설정: 최대 ${values.cpu_threads || 2} / ${values.available_threads || 1} threads · 문자 제거 시작 시 적용됩니다.` :
       "설정 값은 사용자 PC의 로컬 설정 파일에서 관리합니다.";
     content.append(note);
+    if (name === "resources") {
+      const warning = document.createElement("p"); warning.className = "settings-resource-warning";
+      warning.setAttribute("role", "note");
+      warning.textContent = `주의: 사용 가능한 ${values.available_threads || 1}개 논리 thread 중 선택한 수까지 사용할 수 있습니다. 전체에 가깝게 설정하면 PC 반응이 느려질 수 있습니다. 버벅임을 줄이려면 1~2개 또는 절반 이하부터 시작하세요. 이는 RAM이나 CPU 사용률을 정확한 퍼센트로 제한하지 않습니다.`;
+      content.append(warning);
+    }
     const guide = document.createElement("section"); guide.className = "settings-guide";
     const guideTitle = document.createElement("h3"); guideTitle.textContent = "입력 가이드"; guide.append(guideTitle);
     const guideList = document.createElement("ul");
@@ -697,6 +724,7 @@
   el.cancel.addEventListener("click", cancelJob);
   $("new-job").addEventListener("click", resetJob);
   $("settings-button").addEventListener("click", openSettings);
+  $("help-button").addEventListener("click", () => $("help-dialog").showModal());
   $("history-button").addEventListener("click", openHistory);
   $("close-button").addEventListener("click", async () => {
     if (state.busy && !window.confirm("작업을 취소하고 Shorts Studio를 종료할까요?")) return;
@@ -712,6 +740,25 @@
   $("render-button").addEventListener("click", () => {
     try { runStageAction("render", { script: parseEditor("script-editor", "대본") }); }
     catch (error) { setTask("음성을 합성하지 못했습니다", error.message, "error"); }
+  });
+  let voicePreviewUrl = "";
+  $("voice-preview-button").addEventListener("click", async () => {
+    const button = $("voice-preview-button"); button.disabled = true;
+    try {
+      const script = parseEditor("script-editor", "대본");
+      const response = await fetch("/api/voice-preview", { method: "POST", cache: "no-store",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(errorMessage(data));
+      }
+      if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
+      voicePreviewUrl = URL.createObjectURL(await response.blob());
+      const audio = $("voice-preview-audio"); audio.src = voicePreviewUrl; show(audio);
+      await audio.play();
+      setTask("대본 음성 미리듣기", "설정된 Windows 로컬 음성으로 대본 전체를 합성했습니다.");
+    } catch (error) { setTask("음성 미리듣기 실패", error.message, "error"); }
+    finally { button.disabled = state.busy || !state.ttsReady || !$("script-editor").value.trim(); }
   });
   $("product-search-button").addEventListener("click", searchProducts);
   $("oauth-upload-button").addEventListener("click", saveOAuthClient);

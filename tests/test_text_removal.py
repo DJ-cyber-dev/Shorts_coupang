@@ -40,6 +40,15 @@ class ReadinessTests(unittest.TestCase):
             with self.assertRaisesRegex(MediaError, "탐지 모델"):
                 check_ready()
 
+    def test_thread_budget_respects_user_cap(self):
+        from shorts_studio.text_removal.worker import text_cpu_threads
+        with patch.dict(os.environ, {"SHORTS_STUDIO_CPU_THREADS": "2"}):
+            self.assertEqual(text_cpu_threads(12), 2)
+        with patch.dict(os.environ, {"SHORTS_STUDIO_CPU_THREADS": "12"}):
+            self.assertEqual(text_cpu_threads(12), 12)
+        with patch.dict(os.environ, {"SHORTS_STUDIO_CPU_THREADS": "bad"}):
+            self.assertEqual(text_cpu_threads(12), 8)
+
 
 @unittest.skipUnless(importlib.util.find_spec("cv2"), "Optional text dependencies absent")
 class MaskTests(unittest.TestCase):

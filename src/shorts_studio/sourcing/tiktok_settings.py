@@ -56,7 +56,10 @@ class TikTokCommercialSettings:
         if value:
             return value
         if os.name == "nt":
-            from keyring.backends.Windows import WinVaultKeyring
+            try:
+                from keyring.backends.Windows import WinVaultKeyring
+            except ModuleNotFoundError:
+                return None
             return WinVaultKeyring().get_password("shorts-studio-tiktok-commercial", name)
         return None
 

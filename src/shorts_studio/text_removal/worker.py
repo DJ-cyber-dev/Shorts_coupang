@@ -314,9 +314,14 @@ def load_detector(download=False):
 
 
 def text_cpu_threads(cpu_count=None):
-    """Use available CPU parallelism while leaving two logical CPUs for the app/encoder."""
+    """Use available CPU parallelism under an optional user-configured cap."""
     count = cpu_count if cpu_count is not None else (os.cpu_count() or 2)
-    return max(1, min(8, int(count) - 2))
+    automatic = max(1, min(8, int(count) - 2))
+    try:
+        configured = int(os.environ.get("SHORTS_STUDIO_CPU_THREADS", ""))
+    except ValueError:
+        return automatic
+    return min(max(1, int(count)), max(1, configured)) if configured else automatic
 
 
 def load_inpainter(cv2, path):
@@ -353,7 +358,8 @@ def clean_video(source, output, ffmpeg):
     import cv2
     import numpy as np
     from shorts_studio.core.engine import flags
-    cv2.setNumThreads(2)
+    processing_threads = text_cpu_threads()
+    cv2.setNumThreads(processing_threads)
     detector = load_detector()
     cap = cv2.VideoCapture(str(source))
     if not cap.isOpened():
@@ -366,7 +372,7 @@ def clean_video(source, output, ffmpeg):
         raise RuntimeError("지원하지 않는 영상 크기 또는 FPS입니다.")
     command = [ffmpeg, "-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24",
                "-s", f"{width}x{height}", "-r", str(fps), "-i", "pipe:0", "-an", "-c:v", "libx264",
-               "-threads", "2", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
+               "-threads", str(processing_threads), "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
                "-movflags", "+faststart", str(output)]
     encoder = None
     count, detected, preview_saved = 0, 0, False
@@ -380,7 +386,10 @@ def clean_video(source, output, ffmpeg):
         )
         persistent_pixels = int((persistent_mask > 0).sum())
         with tempfile.TemporaryFile() as log:
-            encoder = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log, **flags())
+            encoder = subprocess.Popen(
+                command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=log,
+                **flags(low_priority=os.environ.get("SHORTS_STUDIO_LOW_PRIORITY") == "1"),
+            )
             while True:
                 ok, frame = cap.read()
                 if not ok:

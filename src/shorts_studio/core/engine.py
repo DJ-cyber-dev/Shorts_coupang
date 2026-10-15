@@ -67,8 +67,13 @@ def binary(name: str, explicit: str | None = None) -> str:
     return found
 
 
-def flags():
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+def flags(*, low_priority=False):
+    if os.name != "nt":
+        return {}
+    creationflags = subprocess.CREATE_NO_WINDOW
+    if low_priority:
+        creationflags |= subprocess.BELOW_NORMAL_PRIORITY_CLASS
+    return {"creationflags": creationflags}
 
 
 def ensure_free_space(directory: Path, source_size: int, *, copies: int = 2,
@@ -192,7 +197,7 @@ class Engine:
                        f"crop={w}:{h},setsar=1")
 
     def convert(self, job: Job, progress: Callable[[float], None] | None = None,
-                cancel: threading.Event | None = None) -> Path:
+                cancel: threading.Event | None = None, *, low_priority=False) -> Path:
         job = Job(**{**job.__dict__, "source": Path(job.source), "output": Path(job.output)})
         job.validate()
         if cancel and cancel.is_set():
@@ -214,7 +219,8 @@ class Engine:
                        "-progress", "pipe:1", "-nostats", str(partial)]
             if job.fps:
                 command[-1:-1] = ["-r", str(job.fps)]
-            self._run(command, info["duration"], job.timeout, progress, cancel)
+            self._run(command, info["duration"], job.timeout, progress, cancel,
+                      low_priority=low_priority)
             output = self.probe(partial)
             v = output["video"]
             if (v["width"], v["height"]) != (job.width, job.height) or any(
@@ -229,15 +235,16 @@ class Engine:
         return job.output
 
     @staticmethod
-    def _run(command, duration, timeout, progress, cancel, label="FFmpeg"):
+    def _run(command, duration, timeout, progress, cancel, label="FFmpeg", *,
+             low_priority=False, extra_env=None):
         lines = queue.Queue(maxsize=128)
         errors = deque(maxlen=32)
         started = time.monotonic()
         try:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                        text=True, encoding="utf-8", errors="replace",
-                                       env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                                       start_new_session=os.name != "nt", **flags())
+                                       env={**os.environ, **(extra_env or {}), "PYTHONIOENCODING": "utf-8"},
+                                       start_new_session=os.name != "nt", **flags(low_priority=low_priority))
         except OSError as exc:
             raise MediaError(f"{label} 실행 실패: {exc}") from exc
 

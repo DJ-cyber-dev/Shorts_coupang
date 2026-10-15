@@ -26,11 +26,19 @@ def convert_source(source, output, *, is_url=False, mode="pad", width=720, heigh
 
 
 def analyze_source(source, *, is_url=False, status=None, cancel=None):
-    """Analyze a local file or explicitly supplied URL with the configured vision Provider."""
+    """Analyze sampled frames with Gemini; frame extraction remains local."""
+    from .providers.gemini import GeminiScriptSettings
     from .providers.settings import ProviderSettings
     from .providers.vision import OpenAICompatibleVisionAnalyzer
 
-    analyzer = OpenAICompatibleVisionAnalyzer(ProviderSettings.load())
+    gemini = GeminiScriptSettings.load()
+    settings = ProviderSettings(
+        provider="openai-compatible",
+        model=gemini.model,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        key_name=gemini.key_name,
+    )
+    analyzer = OpenAICompatibleVisionAnalyzer(settings)
     if cancel and cancel.is_set():
         raise Cancelled("취소되었습니다.")
     if is_url:

@@ -11,6 +11,7 @@ import wave
 from shorts_studio.core import Engine, MediaError
 from shorts_studio.narration.provider import WindowsLocalTTS
 from shorts_studio.narration.render import NarrationRenderer, _clean_source, _join_wav_segments, _write_srt
+from shorts_studio.narration.script import PRODUCT_DESCRIPTION_CTA
 from shorts_studio.narration.settings import TTSSettings
 
 
@@ -197,8 +198,10 @@ class NarrationRenderIntegrationTests(unittest.TestCase):
             self.assertTrue(any(stream["codec_type"] == "audio" for stream in info["streams"]))
             self.assertTrue(target.with_suffix(".srt").is_file())
             self.assertTrue(target.with_suffix(".voice.wav").is_file())
+            captions = " ".join(target.with_suffix(".srt").read_text(encoding="utf-8-sig").split())
+            self.assertIn(PRODUCT_DESCRIPTION_CTA, captions)
             report = json.loads(target.with_suffix(".narration.json").read_text(encoding="utf-8"))
-            self.assertEqual(report["caption_count"], 1)
+            self.assertEqual(report["caption_count"], 2)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ TONES = {
     "hook": "초반 후킹을 강조하는 말투",
 }
 
+PRODUCT_DESCRIPTION_CTA = "상품 정보와 링크는 영상 설명란에서 확인해 주세요."
+
 
 class KoreanShortsScriptWriter:
     def __init__(self, settings: ProviderSettings | None = None, client=None,
@@ -58,6 +60,10 @@ class KoreanShortsScriptWriter:
             self._validate_result(result)
         except (ValueError, TypeError, KeyError) as exc:
             raise MediaError("대본 Provider가 올바른 JSON을 반환하지 않았습니다.") from exc
+        # Every finished video must direct viewers to the product information in its description.
+        custom_cta = result["cta"].strip()
+        if PRODUCT_DESCRIPTION_CTA not in custom_cta:
+            result["cta"] = "\n".join(value for value in (custom_cta, PRODUCT_DESCRIPTION_CTA) if value)
         result["target_duration_sec"] = duration_sec
         result["tone"] = tone
         result["timing_status"] = "tts_pending"

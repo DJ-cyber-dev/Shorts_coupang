@@ -78,6 +78,10 @@ class ProviderSettings:
             return value
         if os.name == "nt":
             # Windows Credential Manager backend를 명시해 평문 backend 사용 방지.
-            from keyring.backends.Windows import WinVaultKeyring
+            try:
+                from keyring.backends.Windows import WinVaultKeyring
+            except ModuleNotFoundError:
+                # The secrets extra is optional; settings UI must still load without it.
+                return None
             return WinVaultKeyring().get_password("shorts-studio", self.key_name)
         return None

@@ -392,9 +392,8 @@ class LocalJobManager:
         from shorts_studio.sourcing.settings import YouTubeSearchSettings
         from shorts_studio.sourcing.tiktok_settings import TikTokCommercialSettings
         from shorts_studio.updates.settings import GitHubUpdateSettings
-        from shorts_studio.providers.settings import ProviderSettings
+        from shorts_studio.text_removal.resources import ResourceSettings, available_cpu_threads
 
-        ai = ProviderSettings.load()
         script_ai = GeminiScriptSettings.load()
         tts = TTSSettings.load()
         from shorts_studio.narration.provider import WindowsLocalTTS
@@ -402,9 +401,11 @@ class LocalJobManager:
         youtube = YouTubeSearchSettings.load()
         tiktok = TikTokCommercialSettings.load()
         update = GitHubUpdateSettings.load()
+        resources = ResourceSettings.load()
         return {
-            "ai": {"provider": ai.provider, "model": ai.model, "base_url": ai.base_url,
-                   "key_name": ai.key_name, "key_saved": bool(ai.get_secret())},
+            "ai": {"provider": "gemini", "model": script_ai.model,
+                   "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+                   "key_name": script_ai.key_name, "key_saved": bool(script_ai.get_secret())},
             "script_ai": {"provider": "gemini", "model": script_ai.model,
                           "key_name": script_ai.key_name, "key_saved": bool(script_ai.get_secret()),
                           "models": list(MODEL_OPTIONS)},
@@ -419,6 +420,9 @@ class LocalJobManager:
                        "client_secret_saved": bool(tiktok.get_secret(False))},
             "coupang": {"credentials_saved": CoupangCredentials.load() is not None},
             "updates": {"repository": update.repository, "public_key": update.public_key},
+            "resources": {"cpu_threads": resources.cpu_threads,
+                          "background_priority": resources.background_priority,
+                          "available_threads": available_cpu_threads()},
         }
 
     @staticmethod
@@ -434,13 +438,7 @@ class LocalJobManager:
             if body.get("secret"):
                 settings.store_secret(body["secret"])
         elif name == "ai":
-            from shorts_studio.providers.settings import ProviderSettings
-            settings = ProviderSettings(body.get("provider", "disabled"), body.get("model", ""),
-                                        body.get("base_url", ""), body.get("key_name", "SHORTS_AI_KEY"))
-            settings.validate()
-            settings.save()
-            if body.get("secret"):
-                settings.store_secret(body["secret"])
+            raise ValueError("영상 분석도 Gemini 설정을 사용합니다. ‘Gemini AI 분석·한국어 대본’ 설정을 이용하세요.")
         elif name == "tts":
             from shorts_studio.narration.settings import TTSSettings
             settings = TTSSettings(body.get("provider", "windows-local"),
@@ -470,6 +468,19 @@ class LocalJobManager:
             settings = GitHubUpdateSettings(body.get("repository", ""), body.get("public_key", ""))
             settings.validate()
             settings.save()
+        elif name == "resources":
+            from shorts_studio.text_removal.resources import ResourceSettings
+            priority = body.get("background_priority", True)
+            if isinstance(priority, str):
+                if priority.lower() not in {"true", "false"}:
+                    raise ValueError("백그라운드 우선순위 설정이 올바르지 않습니다.")
+                priority = priority.lower() == "true"
+            try:
+                cpu_threads = int(body.get("cpu_threads", 2))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("CPU thread 상한은 정수여야 합니다.") from exc
+            settings = ResourceSettings(cpu_threads, priority)
+            settings.save()
         else:
             raise ValueError("알 수 없는 설정 항목입니다.")
         return LocalJobManager.settings_snapshot()
@@ -480,6 +491,14 @@ class LocalJobManager:
         settings = GeminiScriptSettings.load()
         GeminiScriptClient(settings).test_connection()
         return {"ok": True, "model": settings.model, "message": "Gemini 연결에 성공했습니다."}
+
+    @staticmethod
+    def preview_voice(body: dict) -> bytes:
+        script = body.get("script") if isinstance(body, dict) else None
+        if not isinstance(script, dict):
+            raise ValueError("먼저 확인할 한국어 대본을 입력하세요.")
+        from shorts_studio.narration.render import NarrationRenderer
+        return NarrationRenderer().preview(script)
 
     @staticmethod
     def save_youtube_oauth_client(raw: str) -> dict:
@@ -531,6 +550,14 @@ class LocalWebHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(raw)
+
+    def _binary(self, value: bytes, content_type: str, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(value)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(value)
 
     def _allowed_host(self) -> bool:
         host = self.headers.get("Host", "").split(":", 1)[0].lower()
@@ -627,8 +654,13 @@ class LocalWebHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._allowed_host():
+            # Consume a bounded request body, send the full rejection, then close the connection.
+            length = int(self.headers.get("Content-Length", "0"))
+            if 0 < length <= 1024 * 1024:
+                self.rfile.read(length)
+            self._json({"error": "허용되지 않은 Host입니다."}, 403)
             self.close_connection = True
-            return self._json({"error": "허용되지 않은 Host입니다."}, 403)
+            return
         path = urlsplit(self.path).path
         manager = self.server.manager
         try:
@@ -655,6 +687,11 @@ class LocalWebHandler(BaseHTTPRequestHandler):
                     return self._json({"error": "application/json 요청만 허용됩니다."}, 415)
                 body = self._body_json()
                 return self._json({"products": manager.search_products(str(body.get("keyword", "")))})
+            if path == "/api/voice-preview":
+                if self.headers.get_content_type() != "application/json":
+                    self.close_connection = True
+                    return self._json({"error": "application/json 요청만 허용됩니다."}, 415)
+                return self._binary(manager.preview_voice(self._body_json()), "audio/wav")
             action_match = re.fullmatch(r"/api/jobs/([a-f0-9]{32})/(analyze|script|render|upload)", path)
             if action_match:
                 if self.headers.get_content_type() != "application/json":
@@ -674,7 +711,7 @@ class LocalWebHandler(BaseHTTPRequestHandler):
                     self.close_connection = True
                     return self._json({"error": "application/json 요청만 허용됩니다."}, 415)
                 return self._json(manager.test_script_ai())
-            settings_match = re.fullmatch(r"/api/settings/(script-ai|ai|tts|youtube|tiktok|coupang|updates)", path)
+            settings_match = re.fullmatch(r"/api/settings/(script-ai|ai|tts|youtube|tiktok|coupang|updates|resources)", path)
             if settings_match:
                 if self.headers.get_content_type() != "application/json":
                     self.close_connection = True

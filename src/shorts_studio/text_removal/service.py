@@ -21,6 +21,8 @@ def check_ready():
 
 
 def remove_text(engine, job, progress=None, status=None, cancel=None):
+    from .resources import ResourceSettings
+    resources = ResourceSettings.load()
     check_ready()
     job.validate()
     if any(job.output.with_suffix(s).exists() for s in (".preview.jpg", ".report.json")):
@@ -34,7 +36,9 @@ def remove_text(engine, job, progress=None, status=None, cancel=None):
         if status:
             status("문자 제거용 영상 준비 중…")
         # CFR로 정규화하여 프레임 단위 처리 후에도 재생 시간을 유지.
-        engine.convert(Job(**{**job.__dict__, "output": normalized, "fps": 30, "crf": 18}), progress, cancel)
+        engine.convert(Job(**{**job.__dict__, "output": normalized, "fps": 30, "crf": 18,
+                              "threads": resources.cpu_threads}), progress, cancel,
+                       low_priority=resources.background_priority)
         if status:
             status("전체 화면 문자 탐지·제거 중… (CPU 처리)")
         if getattr(sys, "frozen", False):
@@ -44,8 +48,12 @@ def remove_text(engine, job, progress=None, status=None, cancel=None):
             command = [sys.executable, "-m", "shorts_studio.text_removal.worker", str(normalized), str(cleaned), engine.ffmpeg]
         os.environ.setdefault("SHORTS_MODEL_DIR", str(model_dir()))
         os.environ.setdefault("SHORTS_USER_NETWORK_DIR", str(user_network_dir()))
-        engine._run(command,
-                    1, 7200, progress, cancel, label="문자 제거")
+        engine._run(command, 1, 7200, progress, cancel, label="문자 제거",
+                    low_priority=resources.background_priority,
+                    extra_env={
+                        "SHORTS_STUDIO_CPU_THREADS": str(resources.cpu_threads),
+                        "SHORTS_STUDIO_LOW_PRIORITY": "1" if resources.background_priority else "0",
+                    })
         info = engine.probe(cleaned)
         prepared = engine.probe(normalized)
         if abs(info["duration"] - prepared["duration"]) > .1:

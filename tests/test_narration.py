@@ -2,7 +2,8 @@ import json
 import unittest
 
 from shorts_studio.core import MediaError
-from shorts_studio.narration.script import KoreanShortsScriptWriter
+from shorts_studio.narration.render import _narration_rows
+from shorts_studio.narration.script import KoreanShortsScriptWriter, PRODUCT_DESCRIPTION_CTA
 
 
 class ScriptWriterTests(unittest.TestCase):
@@ -31,6 +32,16 @@ class ScriptWriterTests(unittest.TestCase):
         self.assertEqual(result["target_duration_sec"], 25)
         self.assertEqual(result["timing_status"], "tts_pending")
         self.assertEqual(len(result["segments"]), 2)
+        self.assertTrue(result["cta"].endswith(PRODUCT_DESCRIPTION_CTA))
+
+    def test_product_description_cta_is_synthesized_and_captioned_last(self):
+        script = {"segments": [{"narration": "첫 번째 문장입니다."}, {"narration": "마지막 내용입니다."}]}
+        rows = _narration_rows(script)
+        self.assertEqual(rows[-1], PRODUCT_DESCRIPTION_CTA)
+
+    def test_product_cta_is_not_duplicated_when_already_spoken(self):
+        script = {"segments": [{"narration": PRODUCT_DESCRIPTION_CTA}]}
+        self.assertEqual(_narration_rows(script), [PRODUCT_DESCRIPTION_CTA])
 
     def test_rejects_invalid_duration_and_unusable_provider_result(self):
         class Client:

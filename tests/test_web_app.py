@@ -42,6 +42,10 @@ class LocalWebAppTest(unittest.TestCase):
         status, _, html = self.request("/")
         self.assertEqual(status, 200)
         self.assertIn(b"Shorts Studio", html)
+        self.assertIn(b'id="help-button"', html)
+        self.assertIn(b'id="help-dialog"', html)
+        self.assertIn("실행 · 설정 도움말".encode("utf-8"), html)
+        self.assertIn("Coupang Partners".encode("utf-8"), html)
         with self.assertRaises(HTTPError) as error:
             self.request("/api/jobs", method="POST", body=b"{}", headers={
                 "Content-Type": "application/json", "Origin": "http://attacker.example",
@@ -220,6 +224,23 @@ class LocalWebAppTest(unittest.TestCase):
             self.assertNotIn("secret", snapshot["ai"])
             self.assertEqual(snapshot["script_ai"]["model"], "gemini-3.8-flash")
             self.assertIn({"id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash · 권장"}, snapshot["script_ai"]["models"])
+            self.assertEqual(snapshot["resources"]["cpu_threads"], 2)
+            self.assertEqual(snapshot["resources"]["background_priority"], True)
+            self.assertEqual(snapshot["resources"]["available_threads"], max(1, os.cpu_count() or 1))
+            status, _, raw = self.request("/api/settings/resources", method="POST",
+                body=json.dumps({"cpu_threads": "1", "background_priority": "true"}).encode(),
+                headers={"Content-Type": "application/json"})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(raw)["settings"]["resources"]["cpu_threads"], 1)
+            self.assertTrue(json.loads(raw)["settings"]["resources"]["background_priority"])
+            from shorts_studio.text_removal.resources import ResourceSettings
+            self.assertEqual(ResourceSettings.load().cpu_threads, 1)
+            with self.assertRaises(HTTPError) as invalid_cap:
+                self.request("/api/settings/resources", method="POST",
+                    body=json.dumps({"cpu_threads": max(1, os.cpu_count() or 1) + 1,
+                                     "background_priority": "true"}).encode(),
+                    headers={"Content-Type": "application/json"})
+            self.assertEqual(invalid_cap.exception.code, 400)
             status, _, raw = self.request("/api/settings/tts", method="POST",
                 body=json.dumps({"provider": "windows-local", "voice": "Microsoft Heami Desktop - Korean"}).encode(),
                 headers={"Content-Type": "application/json"})
